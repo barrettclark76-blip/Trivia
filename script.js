@@ -1,32 +1,23 @@
-// 1. Import Firebase modules from the CDN
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+// 1. Import Firebase modules from the CDN (All versions must match 12.10.0)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
 
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyD2gatwKx8VILOxCJoQ2ebAJ8zCceMy918",
+// 2. Your web app's Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyD2gatwKx8VILOxCJoQ2ebAJ8zCceMy918", // <-- PUT YOUR REAL API KEY HERE
     authDomain: "triviality-7817d.firebaseapp.com",
     databaseURL: "https://triviality-7817d-default-rtdb.firebaseio.com",
     projectId: "triviality-7817d",
     storageBucket: "triviality-7817d.firebasestorage.app",
     messagingSenderId: "369507448493",
     appId: "1:369507448493:web:a38ea5b3fa993c9433f824"
-  };
+};
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-</script>
-
-// 3. Initialize Firebase
+// 3. Initialize Firebase Application and Database
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+// 4. Main Menu and Lobby Logic
 document.addEventListener("DOMContentLoaded", () => {
     const nicknameInput = document.getElementById("nickname");
     const roomCodeInput = document.getElementById("room-code");
@@ -113,6 +104,5 @@ document.addEventListener("DOMContentLoaded", () => {
     // LEAVE Lobby
     btnLeave.addEventListener("click", () => {
         showScreen(mainMenu);
-        // Note: We will need to add logic later to actually remove the player from the database when they leave!
     });
 });
