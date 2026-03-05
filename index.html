@@ -34,9 +34,52 @@
         </section>
 
         <section id="game-lobby" class="screen hidden">
-            <h2 id="lobby-status">Waiting for players...</h2>
-            <p>Room Code: <span id="display-room-code">----</span></p>
-            <button id="btn-leave">Leave Lobby</button>
+            <h2>Room Code: <span id="display-room-code" style="color: #e94560;">----</span></h2>
+            <p id="lobby-status">Waiting for players...</p>
+            
+            <div class="players-list-container">
+                <h3>Players:</h3>
+                <ul id="players-list"></ul>
+            </div>
+
+            <button id="btn-start-game" class="primary-btn hidden">Start Game</button>
+            <button id="btn-leave" class="secondary-btn" style="margin-top: 10px;">Leave Lobby</button>
+        </section>
+
+        <section id="game-active" class="screen hidden">
+            
+            <div id="phase-wheel" class="game-phase hidden">
+                <h2>Selecting Category...</h2>
+                <div class="wheel-box">
+                    <h1 id="wheel-text">SPINNING</h1>
+                </div>
+            </div>
+
+            <div id="phase-countdown" class="game-phase hidden">
+                <h2>Get Ready!</h2>
+                <h1 id="countdown-text" style="font-size: 5rem; color: #e94560;">3</h1>
+            </div>
+
+            <div id="phase-question" class="game-phase hidden">
+                <h3 id="current-category" style="color: #a8a8b3;">Category</h3>
+                <h2 id="question-text" style="margin: 1.5rem 0;">Question goes here?</h2>
+                
+                <div class="input-group">
+                    <input type="text" id="answer-input" placeholder="Type your answer here..." autocomplete="off">
+                </div>
+                <button id="btn-submit-answer" class="primary-btn">Submit Answer</button>
+                
+                <h3 style="margin-top: 1.5rem;">Time Left: <span id="timer-text">30</span>s</h3>
+            </div>
+
+            <div id="phase-leaderboard" class="game-phase hidden">
+                <h2 id="round-result-msg">Round Over!</h2>
+                <div class="players-list-container">
+                    <h3>Current Standings:</h3>
+                    <ul id="leaderboard-list"></ul>
+                </div>
+            </div>
+
         </section>
 
     </main>
