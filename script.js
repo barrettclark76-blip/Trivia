@@ -1,26 +1,50 @@
+// 1. Import Firebase modules from the CDN
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyD2gatwKx8VILOxCJoQ2ebAJ8zCceMy918",
+    authDomain: "triviality-7817d.firebaseapp.com",
+    databaseURL: "https://triviality-7817d-default-rtdb.firebaseio.com",
+    projectId: "triviality-7817d",
+    storageBucket: "triviality-7817d.firebasestorage.app",
+    messagingSenderId: "369507448493",
+    appId: "1:369507448493:web:a38ea5b3fa993c9433f824"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+</script>
+
+// 3. Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
 document.addEventListener("DOMContentLoaded", () => {
-    // Input elements
     const nicknameInput = document.getElementById("nickname");
     const roomCodeInput = document.getElementById("room-code");
     const displayRoomCode = document.getElementById("display-room-code");
+    const lobbyStatus = document.getElementById("lobby-status");
 
-    // Button elements
-    const btnMatchmake = document.getElementById("btn-matchmake");
     const btnCreatePrivate = document.getElementById("btn-create-private");
     const btnJoinPrivate = document.getElementById("btn-join-private");
     const btnLeave = document.getElementById("btn-leave");
 
-    // Screens
     const mainMenu = document.getElementById("main-menu");
     const gameLobby = document.getElementById("game-lobby");
 
-    // Helper function to switch screens
     function showScreen(screenElement) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screenElement.classList.add('active');
     }
 
-    // Helper function to validate nickname
     function getNickname() {
         const name = nicknameInput.value.trim();
         if (!name) {
@@ -30,34 +54,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return name;
     }
 
-    // Event: Matchmaking
-    btnMatchmake.addEventListener("click", () => {
-        const nickname = getNickname();
-        if (!nickname) return;
-
-        console.log(`${nickname} is searching for a public match...`);
-        // TODO: Backend logic to find an open game goes here
-        
-        displayRoomCode.innerText = "Public Match";
-        showScreen(gameLobby);
-    });
-
-    // Event: Create Private Game
+    // CREATE a private room
     btnCreatePrivate.addEventListener("click", () => {
         const nickname = getNickname();
         if (!nickname) return;
 
-        // Generate a random 5-letter room code for UI purposes
+        // Generate a random 5-letter room code
         const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        console.log(`${nickname} created private room: ${newCode}`);
         
-        // TODO: Backend logic to create a room in the database goes here
-
-        displayRoomCode.innerText = newCode;
-        showScreen(gameLobby);
+        // Save the room to Firebase
+        set(ref(db, 'rooms/' + newCode), {
+            host: nickname,
+            status: 'waiting',
+            players: {
+                [nickname]: { score: 0, isHost: true }
+            }
+        }).then(() => {
+            displayRoomCode.innerText = newCode;
+            lobbyStatus.innerText = "Waiting for players...";
+            showScreen(gameLobby);
+        }).catch((error) => {
+            alert("Error creating room: " + error.message);
+        });
     });
 
-    // Event: Join Private Game
+    // JOIN a private room
     btnJoinPrivate.addEventListener("click", () => {
         const nickname = getNickname();
         if (!nickname) return;
@@ -68,17 +89,30 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        console.log(`${nickname} is attempting to join room: ${code}`);
-        
-        // TODO: Backend logic to check if room exists and join it goes here
-
-        displayRoomCode.innerText = code;
-        showScreen(gameLobby);
+        // Check Firebase to see if the room exists
+        const dbRef = ref(db);
+        get(child(dbRef, `rooms/${code}`)).then((snapshot) => {
+            if (snapshot.exists()) {
+                // Room exists! Add player to the room
+                set(ref(db, `rooms/${code}/players/${nickname}`), {
+                    score: 0,
+                    isHost: false
+                }).then(() => {
+                    displayRoomCode.innerText = code;
+                    lobbyStatus.innerText = "Joined! Waiting for host to start...";
+                    showScreen(gameLobby);
+                });
+            } else {
+                alert("Room not found. Check the code and try again.");
+            }
+        }).catch((error) => {
+            alert("Error joining room: " + error.message);
+        });
     });
 
-    // Event: Leave Lobby (Go back to main menu)
+    // LEAVE Lobby
     btnLeave.addEventListener("click", () => {
-        // TODO: Backend logic to disconnect from the room goes here
         showScreen(mainMenu);
+        // Note: We will need to add logic later to actually remove the player from the database when they leave!
     });
 });
