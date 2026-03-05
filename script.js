@@ -45,6 +45,18 @@ document.addEventListener("DOMContentLoaded", () => {
         return name;
     }
 
+    // MATCHMAKING (Public Game)
+        const btnMatchmake = document.getElementById("btn-matchmake");
+        btnMatchmake.addEventListener("click", () => {
+            const nickname = getNickname();
+            if (!nickname) return;
+    
+            // Note: Real matchmaking is complex. For now, we just simulate it.
+            displayRoomCode.innerText = "Public Match";
+            lobbyStatus.innerText = "Searching for open games...";
+            showScreen(gameLobby);
+        });
+    
     // CREATE a private room
     btnCreatePrivate.addEventListener("click", () => {
         const nickname = getNickname();
