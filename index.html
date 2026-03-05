@@ -3,32 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My GitHub Pages Site</title>
+    <title>Trivia Battle Web</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <h1>Welcome to My Website</h1>
-        <nav>
-            <ul>
-                <li><a href="#">Home</a></li>
-                <li><a href="#">About</a></li>
-                <li><a href="#">Contact</a></li>
-            </ul>
-        </nav>
-    </header>
+    <main id="game-container">
+        
+        <section id="main-menu" class="screen active">
+            <h1>Trivia Battle</h1>
+            
+            <div class="input-group">
+                <label for="nickname">Nickname</label>
+                <input type="text" id="nickname" placeholder="Enter your name" maxlength="15" autocomplete="off">
+            </div>
 
-    <main>
-        <section>
-            <h2>Hello, World!</h2>
-            <p>This is a starter template for a webpage hosted on GitHub Pages. It includes basic HTML, CSS, and JavaScript.</p>
-            <button id="action-btn">Click Me!</button>
+            <button id="btn-matchmake" class="primary-btn">Find a Match</button>
+
+            <div class="divider">
+                <span>OR</span>
+            </div>
+
+            <div class="private-match-group">
+                <button id="btn-create-private" class="secondary-btn">Create Private Game</button>
+                
+                <div class="join-group">
+                    <input type="text" id="room-code" placeholder="Room Code" maxlength="6" autocomplete="off">
+                    <button id="btn-join-private" class="secondary-btn">Join</button>
+                </div>
+            </div>
         </section>
-    </main>
 
-    <footer>
-        <p>&copy; 2026 My Website. Hosted on GitHub Pages.</p>
-    </footer>
+        <section id="game-lobby" class="screen hidden">
+            <h2 id="lobby-status">Waiting for players...</h2>
+            <p>Room Code: <span id="display-room-code">----</span></p>
+            <button id="btn-leave">Leave Lobby</button>
+        </section>
+
+    </main>
 
     <script src="script.js"></script>
 </body>
