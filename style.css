@@ -139,3 +139,41 @@ button:active {
 .join-group button {
     flex: 1;
 }
+/* Player Lists & Leaderboard */
+.players-list-container {
+    background-color: #1a1a2e;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1.5rem 0;
+    text-align: left;
+}
+
+#players-list, #leaderboard-list {
+    list-style: none;
+    margin-top: 0.5rem;
+}
+
+#players-list li, #leaderboard-list li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #0f3460;
+    display: flex;
+    justify-content: space-between;
+}
+
+#players-list li:last-child, #leaderboard-list li:last-child {
+    border-bottom: none;
+}
+
+/* Hidden elements inside active screens */
+.hidden {
+    display: none !important;
+}
+
+/* Wheel Box Animation */
+.wheel-box {
+    background-color: #0f3460;
+    padding: 2rem;
+    border-radius: 12px;
+    margin: 2rem 0;
+    border: 3px solid #e94560;
+}
