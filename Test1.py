@@ -1,9 +1,7 @@
 import math
 import random
-import re
 import sys
 import time
-from pathlib import Path
 
 import pygame
 import pyrebase
@@ -23,63 +21,72 @@ db = firebase.database()
 # --- Configuration & Constants ---
 WIDTH, HEIGHT = 1000, 680
 FPS = 60
-POLL_INTERVAL_MS = 400
-TOTAL_QUESTIONS = 10
+BG_COLOR = pygame.Color("#2C3E50")
+CARD_COLOR = pygame.Color("#34495E")
+TEXT_COLOR = pygame.Color("#FFFFFF")
+ACCENT_COLOR = pygame.Color("#1ABC9C")
+ERROR_COLOR = pygame.Color("#E74C3C")
+INFO_COLOR = pygame.Color("#F1C40F")
 
-# Modern dark palette
-BG_TOP = pygame.Color("#0F172A")
-BG_BOTTOM = pygame.Color("#111827")
-CARD_COLOR = pygame.Color("#1F2937")
-CARD_ALT = pygame.Color("#253143")
-TEXT_PRIMARY = pygame.Color("#E5E7EB")
-TEXT_MUTED = pygame.Color("#9CA3AF")
-ACCENT = pygame.Color("#22D3EE")
-SUCCESS = pygame.Color("#34D399")
-DANGER = pygame.Color("#FB7185")
-WARNING = pygame.Color("#F59E0B")
-
-CATEGORIES = ["Sports", "Geography", "Arts", "Science", "History", "General Knowledge"]
-CATEGORY_ICONS = {
-    "Sports": "⚽",
-    "Geography": "🗺",
-    "Arts": "🎨",
-    "Science": "🔬",
-    "History": "🏛",
-    "General Knowledge": "🧠",
-}
 WHEEL_COLORS = [
-    pygame.Color("#E76F51"),
-    pygame.Color("#2A9D8F"),
-    pygame.Color("#9B5DE5"),
-    pygame.Color("#F4A261"),
-    pygame.Color("#577590"),
-    pygame.Color("#43AA8B"),
+    pygame.Color("#E74C3C"),
+    pygame.Color("#3498DB"),
+    pygame.Color("#9B59B6"),
+    pygame.Color("#F1C40F"),
+    pygame.Color("#E67E22"),
+    pygame.Color("#95A5A6"),
 ]
 
-# Fallback bank, used when raw text files are missing/unreadable.
-FALLBACK_QUESTION_BANK = {
+CATEGORIES = ["Sports", "Geography", "Arts", "Science", "History", "General Knowledge"]
+TOTAL_QUESTIONS = 10
+POLL_INTERVAL_MS = 500
+
+# --- Placeholder question bank ---
+# Replace this with loading from your own JSON file.
+# Example structure expected:
+# {
+#   "Sports": [{"question": "...", "answer": "..."}, ...],
+#   ...
+# }
+QUESTION_BANK = {
     "Sports": [
         {"question": "How many players are on a basketball team on court at one time?", "answer": "5"},
+        {"question": "Which country won the 2018 FIFA World Cup?", "answer": "france"},
     ],
-    "Geography": [{"question": "What is the capital of Japan?", "answer": "tokyo"}],
-    "Arts": [{"question": "Who painted the Mona Lisa?", "answer": "leonardo da vinci"}],
-    "Science": [{"question": "What planet is known as the Red Planet?", "answer": "mars"}],
-    "History": [{"question": "In what year did World War II end?", "answer": "1945"}],
-    "General Knowledge": [{"question": "How many days are there in a leap year?", "answer": "366"}],
+    "Geography": [
+        {"question": "What is the capital of Japan?", "answer": "tokyo"},
+        {"question": "Which river is the longest in the world?", "answer": "nile"},
+    ],
+    "Arts": [
+        {"question": "Who painted the Mona Lisa?", "answer": "leonardo da vinci"},
+        {"question": "How many strings does a standard violin have?", "answer": "4"},
+    ],
+    "Science": [
+        {"question": "What planet is known as the Red Planet?", "answer": "mars"},
+        {"question": "What gas do plants absorb from the atmosphere?", "answer": "carbon dioxide"},
+    ],
+    "History": [
+        {"question": "In what year did World War II end?", "answer": "1945"},
+        {"question": "Who was the first President of the United States?", "answer": "george washington"},
+    ],
+    "General Knowledge": [
+        {"question": "How many days are there in a leap year?", "answer": "366"},
+        {"question": "What is the largest ocean on Earth?", "answer": "pacific"},
+    ],
 }
 
 
 class Button:
-    def __init__(self, x, y, w, h, text, color=ACCENT):
+    def __init__(self, x, y, w, h, text, color=ACCENT_COLOR):
         self.rect = pygame.Rect(x, y, w, h)
         self.text = text
         self.color = color
 
     def draw(self, screen, font, enabled=True):
-        color = self.color if enabled else pygame.Color("#475569")
-        pygame.draw.rect(screen, color, self.rect, border_radius=10)
-        label = font.render(self.text, True, TEXT_PRIMARY)
-        screen.blit(label, label.get_rect(center=self.rect.center))
+        draw_color = self.color if enabled else pygame.Color("#566573")
+        pygame.draw.rect(screen, draw_color, self.rect, border_radius=8)
+        txt = font.render(self.text, True, TEXT_COLOR)
+        screen.blit(txt, txt.get_rect(center=self.rect.center))
 
     def is_clicked(self, pos):
         return self.rect.collidepoint(pos)
@@ -88,11 +95,11 @@ class Button:
 class InputBox:
     def __init__(self, x, y, w, h, placeholder=""):
         self.rect = pygame.Rect(x, y, w, h)
-        self.placeholder = placeholder
         self.text = ""
         self.active = False
+        self.placeholder = placeholder
 
-    def handle_event(self, event, max_len=120):
+    def handle_event(self, event, max_len=80):
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
         if event.type == pygame.KEYDOWN and self.active:
@@ -200,6 +207,39 @@ def load_question_bank(base_dir="."):
 
 
 QUESTION_BANK = load_question_bank(Path(__file__).parent)
+    def clear(self):
+        self.text = ""
+
+    def draw(self, screen, font):
+        border = ACCENT_COLOR if self.active else CARD_COLOR
+        pygame.draw.rect(screen, border, self.rect, 2, border_radius=6)
+        shown = self.text if self.text else self.placeholder
+        color = TEXT_COLOR if self.text else pygame.Color("#AAB7B8")
+        txt = font.render(shown, True, color)
+        screen.blit(txt, (self.rect.x + 10, self.rect.y + 10))
+
+
+def normalize_answer(text):
+    return " ".join(text.strip().lower().split())
+
+
+def create_wheel_surface(radius):
+    surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+    slice_angle = 360 / len(CATEGORIES)
+    for i, category in enumerate(CATEGORIES):
+        points = [(radius, radius)]
+        for angle in range(int(i * slice_angle), int((i + 1) * slice_angle) + 1):
+            rad = math.radians(angle)
+            points.append((radius + radius * math.cos(rad), radius + radius * math.sin(rad)))
+        pygame.draw.polygon(surf, WHEEL_COLORS[i], points)
+
+        label_angle = math.radians((i + 0.5) * slice_angle)
+        label_r = radius * 0.62
+        label_x = radius + label_r * math.cos(label_angle)
+        label_y = radius + label_r * math.sin(label_angle)
+        label_surface = pygame.font.SysFont("Verdana", 16, bold=True).render(category, True, TEXT_COLOR)
+        surf.blit(label_surface, label_surface.get_rect(center=(label_x, label_y)))
+    return surf
 
 
 def get_players(room):
@@ -301,6 +341,39 @@ def start_new_round(room_id, question_index):
             "feedback": 3.0,
             "leaderboard": 4.0,
         },
+    out = {}
+    for name, info in players.items():
+        if isinstance(info, dict):
+            out[name] = int(info.get("score", 0))
+        else:
+            out[name] = int(info)
+    return out
+
+
+def start_new_round(room_id, game, question_index):
+    category = random.choice(CATEGORIES)
+    pool = QUESTION_BANK.get(category, [{"question": "Placeholder question", "answer": "placeholder"}])
+    selected = random.choice(pool)
+
+    wheel_start_angle = random.uniform(0, 360)
+    wheel_rotation = random.uniform(1080, 1800)
+    round_start = time.time()
+
+    round_payload = {
+        "question_index": question_index,
+        "category": category,
+        "question": selected["question"],
+        "answer": normalize_answer(selected["answer"]),
+        "phase_start": round_start,
+        "durations": {
+            "spin": 4,
+            "countdown": 3,
+            "answer": 30,
+            "feedback": 3,
+            "leaderboard": 4,
+        },
+        "wheel_start_angle": wheel_start_angle,
+        "wheel_rotation": wheel_rotation,
     }
 
     db.child("rooms").child(room_id).child("game").update(
@@ -373,6 +446,23 @@ def maybe_shorten_answer_phase(room_id, room):
 
 
 def apply_round_scoring(room_id, room):
+            "round": round_payload,
+            "score_applied_round": -1,
+            "updated_at": round_start,
+        }
+    )
+
+
+def ensure_player(room_id, nickname):
+    room = db.child("rooms").child(room_id).get().val() or {}
+    players = get_players(room)
+    if nickname not in players:
+        db.child("rooms").child(room_id).child("players").child(nickname).set(
+            {"score": 0, "joined_at": time.time()}
+        )
+
+
+def apply_round_scoring(room_id, room, nickname):
     game = room.get("game", {})
     round_data = game.get("round", {})
     if not round_data:
@@ -391,6 +481,16 @@ def apply_round_scoring(room_id, room):
         if not submitted:
             delta = -2
         elif submitted == correct:
+    correct_answer = round_data.get("answer", "")
+    answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
+    players = get_players(room)
+
+    for player in players:
+        response = answers.get(player, {}) if isinstance(answers.get(player), dict) else {}
+        answer_text = normalize_answer(response.get("answer", ""))
+        if not answer_text:
+            delta = -2
+        elif answer_text == correct_answer:
             delta = 5
         else:
             delta = -5
@@ -398,6 +498,9 @@ def apply_round_scoring(room_id, room):
         score_ref = db.child("rooms").child(room_id).child("players").child(player).child("score")
         current = int(score_ref.get().val() or 0)
         score_ref.set(current + delta)
+        score_path = db.child("rooms").child(room_id).child("players").child(player).child("score")
+        current_score = score_path.get().val() or 0
+        score_path.set(int(current_score) + delta)
 
     db.child("rooms").child(room_id).child("game").child("score_applied_round").set(round_idx)
 
@@ -432,6 +535,47 @@ def render_wrapped_text(screen, font, text, color, rect, line_spacing=6):
         surf = font.render(ln, True, color)
         screen.blit(surf, (rect.x, y))
         y += surf.get_height() + line_spacing
+def submit_answer(room_id, nickname, round_idx, answer_text):
+    db.child("rooms").child(room_id).child("answers").child(str(round_idx)).child(nickname).set(
+        {
+            "answer": answer_text,
+            "submitted_at": time.time(),
+        }
+    )
+
+
+def host_start_game(room_id):
+    room = db.child("rooms").child(room_id).get().val() or {}
+    players = get_players(room)
+    for name in players:
+        db.child("rooms").child(room_id).child("players").child(name).child("score").set(0)
+
+    db.child("rooms").child(room_id).child("answers").set({})
+    db.child("rooms").child(room_id).child("game").set(
+        {"status": "running", "started_at": time.time(), "score_applied_round": -1}
+    )
+    start_new_round(room_id, room.get("game", {}), 0)
+
+
+def phase_from_elapsed(round_data, elapsed):
+    durations = round_data.get("durations", {})
+    t_spin = durations.get("spin", 4)
+    t_count = durations.get("countdown", 3)
+    t_answer = durations.get("answer", 30)
+    t_feedback = durations.get("feedback", 3)
+    t_lb = durations.get("leaderboard", 4)
+
+    if elapsed < t_spin:
+        return "spinning", t_spin - elapsed
+    if elapsed < t_spin + t_count:
+        return "countdown", t_spin + t_count - elapsed
+    if elapsed < t_spin + t_count + t_answer:
+        return "answer", t_spin + t_count + t_answer - elapsed
+    if elapsed < t_spin + t_count + t_answer + t_feedback:
+        return "feedback", t_spin + t_count + t_answer + t_feedback - elapsed
+    if elapsed < t_spin + t_count + t_answer + t_feedback + t_lb:
+        return "leaderboard", t_spin + t_count + t_answer + t_feedback + t_lb - elapsed
+    return "round_done", 0
 
 
 def main():
@@ -455,6 +599,20 @@ def main():
     submit_btn = Button(835, 532, 90, 42, "SEND")
 
     wheel_surface = create_wheel_surface(185, small_font, icon_font)
+    title_font = pygame.font.SysFont("Verdana", 40, bold=True)
+    large_font = pygame.font.SysFont("Verdana", 30, bold=True)
+    mid_font = pygame.font.SysFont("Verdana", 24)
+    small_font = pygame.font.SysFont("Verdana", 18)
+
+    menu_nick = InputBox(320, 190, 360, 46, "Nickname")
+    menu_room = InputBox(320, 280, 360, 46, "Room ID (blank = create random)")
+    answer_box = InputBox(200, 520, 600, 46, "Type answer and press Enter")
+
+    join_btn = Button(410, 360, 180, 56, "JOIN LOBBY")
+    host_start_btn = Button(390, 520, 220, 60, "START GAME")
+    submit_btn = Button(820, 520, 140, 46, "SUBMIT")
+
+    wheel_surface = create_wheel_surface(190)
 
     state = "MENU"
     room_id = ""
@@ -463,6 +621,7 @@ def main():
     status_message = ""
     local_feedback = ""
     submitted_round = -1
+
     room_data = {}
     last_poll = 0
 
@@ -475,6 +634,11 @@ def main():
             room_data = db.child("rooms").child(room_id).get().val() or {}
             is_host = room_data.get("game", {}).get("host") == nickname
             if state == "LOBBY" and room_data.get("game", {}).get("status") == "running":
+        if state in {"LOBBY", "GAME"} and room_id and (now_ms - last_poll >= POLL_INTERVAL_MS):
+            room_data = db.child("rooms").child(room_id).get().val() or {}
+            game = room_data.get("game", {})
+            is_host = game.get("host") == nickname
+            if state == "LOBBY" and game.get("status") == "running":
                 state = "GAME"
                 submitted_round = -1
                 local_feedback = ""
@@ -487,11 +651,12 @@ def main():
             if state == "MENU":
                 menu_nick.handle_event(event, max_len=16)
                 menu_room.handle_event(event, max_len=10)
+                menu_room.handle_event(event, max_len=8)
                 if event.type == pygame.MOUSEBUTTONDOWN and join_btn.is_clicked(event.pos):
                     nickname = menu_nick.text.strip()
                     room_id = menu_room.text.strip() or str(random.randint(1000, 9999))
                     if not nickname:
-                        status_message = "Nickname required"
+                        status_message = "Nickname is required."
                         continue
 
                     room = db.child("rooms").child(room_id).get().val()
@@ -500,12 +665,10 @@ def main():
                             {
                                 "players": {nickname: {"score": 0, "joined_at": now}},
                                 "game": {
-                                    "host": nickname,
                                     "status": "lobby",
+                                    "host": nickname,
                                     "started_at": 0,
-                                    "finished_at": 0,
                                     "score_applied_round": -1,
-                                    "round": {},
                                 },
                             }
                         )
@@ -517,14 +680,14 @@ def main():
                     status_message = ""
 
             elif state == "LOBBY":
-                if event.type == pygame.MOUSEBUTTONDOWN and start_btn.is_clicked(event.pos):
+                if event.type == pygame.MOUSEBUTTONDOWN and host_start_btn.is_clicked(event.pos):
                     players = get_players(room_data)
                     if is_host and len(players) >= 2:
                         host_start_game(room_id)
+                        room_data = db.child("rooms").child(room_id).get().val() or {}
                         state = "GAME"
-                        submitted_round = -1
                         local_feedback = ""
-                        answer_box.clear()
+                        submitted_round = -1
 
             elif state == "GAME":
                 action = answer_box.handle_event(event)
@@ -537,43 +700,45 @@ def main():
                     elapsed = now - float(round_data.get("phase_start", now))
                     phase, _ = phase_from_elapsed(round_data, elapsed)
                     round_idx = int(round_data.get("question_index", -1))
-                    if phase == "answer" and submitted_round != round_idx:
+                    if phase == "answer" and round_idx >= 0 and submitted_round != round_idx:
                         submit_answer(room_id, nickname, round_idx, answer_box.text.strip())
                         submitted_round = round_idx
-                        local_feedback = "Answer sent"
+                        local_feedback = "Answer submitted!"
 
-        draw_gradient_bg(screen)
+        screen.fill(BG_COLOR)
 
         if state == "MENU":
-            screen.blit(title_font.render("MULTIPLAYER TRIVIA", True, TEXT_PRIMARY), (330, 120))
-            menu_nick.draw(screen, body_font)
-            menu_room.draw(screen, body_font)
-            join_btn.draw(screen, body_font)
+            screen.blit(title_font.render("MULTIPLAYER TRIVIA", True, TEXT_COLOR), (270, 90))
+            menu_nick.draw(screen, mid_font)
+            menu_room.draw(screen, mid_font)
+            join_btn.draw(screen, mid_font)
             if status_message:
-                screen.blit(small_font.render(status_message, True, DANGER), (430, 405))
+                msg = small_font.render(status_message, True, ERROR_COLOR)
+                screen.blit(msg, (320, 430))
 
         elif state == "LOBBY":
             players = get_players(room_data)
-            is_host = room_data.get("game", {}).get("host") == nickname
-            can_start = is_host and len(players) >= 2
+            game = room_data.get("game", {})
+            is_host = game.get("host") == nickname
 
-            pygame.draw.rect(screen, CARD_COLOR, (60, 70, 880, 540), border_radius=14)
-            screen.blit(title_font.render(f"Lobby #{room_id}", True, TEXT_PRIMARY), (90, 95))
+            screen.blit(title_font.render(f"LOBBY #{room_id}", True, TEXT_COLOR), (320, 60))
             role = "Host" if is_host else "Player"
-            screen.blit(body_font.render(f"You: {nickname} ({role})", True, TEXT_MUTED), (90, 145))
-            screen.blit(body_font.render(f"Players: {len(players)}", True, TEXT_MUTED), (90, 172))
+            screen.blit(mid_font.render(f"You: {nickname} ({role})", True, INFO_COLOR), (40, 140))
+            screen.blit(mid_font.render(f"Players joined: {len(players)}", True, TEXT_COLOR), (40, 180))
 
-            y = 225
+            y = 230
             for player in sorted(players.keys()):
-                score = int((players[player] or {}).get("score", 0)) if isinstance(players[player], dict) else int(players[player])
-                screen.blit(body_font.render(f"• {player}   {score} pts", True, TEXT_PRIMARY), (100, y))
-                y += 34
+                screen.blit(small_font.render(f"• {player}", True, TEXT_COLOR), (60, y))
+                y += 32
 
-            start_btn.draw(screen, body_font, enabled=can_start)
-            helper = "Host can start once at least 2 players have joined."
-            screen.blit(small_font.render(helper, True, TEXT_MUTED), (360, 612))
+            can_start = is_host and len(players) >= 2
+            host_start_btn.draw(screen, mid_font, enabled=can_start)
+            tip = "Host can start when at least 2 players are in lobby."
+            screen.blit(small_font.render(tip, True, TEXT_COLOR), (300, 600))
+
             if not is_host:
-                screen.blit(body_font.render("Waiting for host to start…", True, WARNING), (360, 553))
+                wait_text = "Waiting for host to start the game..."
+                screen.blit(mid_font.render(wait_text, True, INFO_COLOR), (300, 520))
 
         elif state == "GAME":
             game = room_data.get("game", {})
@@ -582,56 +747,47 @@ def main():
             scores = get_scores(players)
 
             if not round_data:
-                screen.blit(body_font.render("Waiting for host to initialize round…", True, WARNING), (360, 320))
+                screen.blit(mid_font.render("Waiting for host to initialize round...", True, INFO_COLOR), (260, 320))
             else:
                 round_idx = int(round_data.get("question_index", 0))
                 elapsed = now - float(round_data.get("phase_start", now))
                 phase, time_left = phase_from_elapsed(round_data, elapsed)
 
-                if is_host and phase == "answer":
-                    maybe_shorten_answer_phase(room_id, room_data)
-
                 if is_host and phase == "feedback":
-                    apply_round_scoring(room_id, room_data)
-
-                # Always refresh live scores to avoid stale leaderboard.
-                if now_ms % 3 == 0:
-                    room_data = db.child("rooms").child(room_id).get().val() or room_data
-                    players = get_players(room_data)
-                    scores = get_scores(players)
-                    game = room_data.get("game", game)
-                    round_data = game.get("round", round_data)
-                    round_idx = int(round_data.get("question_index", round_idx))
+                    apply_round_scoring(room_id, room_data, nickname)
+                    room_data = db.child("rooms").child(room_id).get().val() or {}
+                    scores = get_scores(get_players(room_data))
 
                 if is_host and phase == "round_done":
                     next_q = round_idx + 1
                     if next_q < TOTAL_QUESTIONS:
-                        start_new_round(room_id, next_q)
+                        start_new_round(room_id, game, next_q)
                         room_data = db.child("rooms").child(room_id).get().val() or {}
-                        submitted_round = -1
-                        local_feedback = ""
                         answer_box.clear()
-                        continue
-                    db.child("rooms").child(room_id).child("game").update(
-                        {"status": "finished", "finished_at": time.time()}
-                    )
+                        local_feedback = ""
+                        submitted_round = -1
+                    else:
+                        db.child("rooms").child(room_id).child("game").update(
+                            {"status": "finished", "finished_at": now}
+                        )
 
-                status = room_data.get("game", {}).get("status", "running")
-                if status == "finished":
+                game_status = room_data.get("game", {}).get("status", "running")
+                if game_status == "finished":
                     ranking = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-                    pygame.draw.rect(screen, CARD_COLOR, (120, 80, 760, 520), border_radius=14)
-                    screen.blit(title_font.render("Final Standings", True, TEXT_PRIMARY), (385, 120))
-                    y = 210
+                    screen.blit(title_font.render("FINAL STANDINGS", True, TEXT_COLOR), (315, 80))
+                    y = 180
                     for i, (player, score) in enumerate(ranking, start=1):
-                        screen.blit(section_font.render(f"{i}. {player} — {score}", True, TEXT_PRIMARY), (320, y))
-                        y += 48
-                    screen.blit(small_font.render("Returning to lobby…", True, TEXT_MUTED), (450, 560))
-                    finished_at = float(room_data.get("game", {}).get("finished_at", now))
-                    if is_host and now - finished_at > 6:
+                        screen.blit(mid_font.render(f"{i}. {player} - {score}", True, TEXT_COLOR), (360, y))
+                        y += 46
+                    screen.blit(
+                        small_font.render("Returning to lobby...", True, INFO_COLOR),
+                        (420, 560),
+                    )
+                    if is_host and now - float(room_data.get("game", {}).get("finished_at", now)) > 8:
                         db.child("rooms").child(room_id).child("game").update(
                             {"status": "lobby", "round": {}, "score_applied_round": -1}
                         )
-                    if now - finished_at > 6:
+                    if game_status == "finished" and now - float(room_data.get("game", {}).get("finished_at", now)) > 8:
                         state = "LOBBY"
                     pygame.display.flip()
                     clock.tick(FPS)
@@ -639,71 +795,68 @@ def main():
 
                 category = round_data.get("category", "")
                 question = round_data.get("question", "")
-                answer_key = normalize_answer(round_data.get("answer", ""))
-                all_answered_at = float(round_data.get("all_answered_at", 0) or 0)
+                answer_key = round_data.get("answer", "")
 
-                # Header
-                screen.blit(body_font.render(f"Question {round_idx + 1}/{TOTAL_QUESTIONS}", True, TEXT_PRIMARY), (40, 25))
-                screen.blit(body_font.render(f"Category: {category}", True, ACCENT), (40, 52))
-
-                pygame.draw.rect(screen, CARD_COLOR, (40, 88, 690, 500), border_radius=14)
-                pygame.draw.rect(screen, CARD_ALT, (755, 88, 205, 500), border_radius=14)
-                screen.blit(section_font.render("Leaderboard", True, TEXT_PRIMARY), (785, 110))
-                y = 152
-                for i, (player, score) in enumerate(sorted(scores.items(), key=lambda x: x[1], reverse=True), start=1):
-                    screen.blit(small_font.render(f"{i}. {player}", True, TEXT_PRIMARY), (770, y))
-                    screen.blit(small_font.render(str(score), True, ACCENT), (930, y))
-                    y += 28
+                screen.blit(mid_font.render(f"Question {round_idx + 1} / {TOTAL_QUESTIONS}", True, TEXT_COLOR), (40, 20))
+                screen.blit(mid_font.render(f"Category: {category}", True, INFO_COLOR), (40, 55))
 
                 if phase == "spinning":
-                    progress = max(0, min(1, elapsed / float(round_data.get("durations", {}).get("spin", 4))))
-                    eased = 1 - pow(1 - progress, 3)
-                    angle = float(round_data.get("wheel_start_angle", 0)) + float(round_data.get("wheel_rotation", 0)) * eased
-                    rw = pygame.transform.rotozoom(wheel_surface, angle, 1)
-                    screen.blit(rw, rw.get_rect(center=(385, 330)))
-                    pygame.draw.polygon(screen, TEXT_PRIMARY, [(385, 122), (373, 97), (397, 97)])
-                    screen.blit(section_font.render("Spinning…", True, TEXT_PRIMARY), (320, 120))
-
-                elif phase == "category_reveal":
-                    screen.blit(section_font.render("Category selected", True, TEXT_PRIMARY), (280, 190))
-                    icon = CATEGORY_ICONS.get(category, "•")
-                    screen.blit(title_font.render(f"{icon}  {category}", True, ACCENT), (250, 250))
+                    t_spin = round_data.get("durations", {}).get("spin", 4)
+                    progress = max(0, min(1, elapsed / t_spin))
+                    angle = float(round_data.get("wheel_start_angle", 0)) + float(
+                        round_data.get("wheel_rotation", 0)
+                    ) * progress
+                    rot_wheel = pygame.transform.rotate(wheel_surface, angle)
+                    screen.blit(rot_wheel, rot_wheel.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+                    pygame.draw.polygon(screen, TEXT_COLOR, [(WIDTH // 2, 120), (WIDTH // 2 - 14, 90), (WIDTH // 2 + 14, 90)])
+                    screen.blit(large_font.render("Spinning category wheel...", True, TEXT_COLOR), (280, 90))
 
                 elif phase == "countdown":
                     count = max(1, int(math.ceil(time_left)))
-                    screen.blit(section_font.render(f"Get Ready: {count}", True, TEXT_PRIMARY), (300, 240))
+                    screen.blit(large_font.render(f"Get ready: {count}", True, TEXT_COLOR), (390, 250))
+                    screen.blit(mid_font.render(f"Category selected: {category}", True, INFO_COLOR), (350, 320))
 
                 elif phase in {"answer", "feedback", "leaderboard"}:
-                    render_wrapped_text(screen, section_font, question, TEXT_PRIMARY, pygame.Rect(72, 130, 625, 180))
+                    pygame.draw.rect(screen, CARD_COLOR, (90, 130, 820, 190), border_radius=10)
+                    wrapped = question
+                    question_surface = mid_font.render(wrapped, True, TEXT_COLOR)
+                    screen.blit(question_surface, (120, 180))
 
                     if phase == "answer":
-                        time_text = f"Time left: {int(math.ceil(time_left))}s"
-                        screen.blit(body_font.render(time_text, True, WARNING), (72, 330))
-                        if all_answered_at > 0:
-                            screen.blit(body_font.render("Answers are in!", True, SUCCESS), (72, 356))
-                        answer_box.draw(screen, body_font)
+                        screen.blit(mid_font.render(f"Time left: {int(math.ceil(time_left))}s", True, INFO_COLOR), (120, 140))
+                        answer_box.draw(screen, mid_font)
                         submit_btn.draw(screen, small_font, enabled=submitted_round != round_idx)
                         if local_feedback:
-                            screen.blit(small_font.render(local_feedback, True, TEXT_MUTED), (122, 580))
-
-                    elif phase == "feedback":
-                        answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
-                        mine = normalize_answer((answers.get(nickname) or {}).get("answer", ""))
-                        if not mine:
-                            msg, color = "No answer submitted (-2)", DANGER
-                        elif mine == answer_key:
-                            msg, color = "Correct! (+5)", SUCCESS
-                        else:
-                            msg, color = "Incorrect (-5)", DANGER
-                        screen.blit(section_font.render(msg, True, color), (72, 360))
-                        screen.blit(body_font.render(f"Correct answer: {answer_key}", True, TEXT_MUTED), (72, 402))
-
+                            screen.blit(small_font.render(local_feedback, True, INFO_COLOR), (200, 580))
                     else:
-                        screen.blit(section_font.render("Leaderboard updated", True, TEXT_PRIMARY), (72, 360))
+                        answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
+                        my_answer = normalize_answer((answers.get(nickname) or {}).get("answer", ""))
+                        if not my_answer:
+                            outcome = "No answer submitted (-2)"
+                            color = ERROR_COLOR
+                        elif my_answer == answer_key:
+                            outcome = "Correct! (+5)"
+                            color = ACCENT_COLOR
+                        else:
+                            outcome = "Incorrect (-5)"
+                            color = ERROR_COLOR
 
-                # fallback safe render state
-                elif phase == "round_done":
-                    screen.blit(body_font.render("Loading next question…", True, TEXT_MUTED), (72, 360))
+                        if phase == "feedback":
+                            screen.blit(mid_font.render(outcome, True, color), (390, 430))
+                            screen.blit(small_font.render(f"Correct answer: {answer_key}", True, TEXT_COLOR), (350, 470))
+                        else:
+                            ranking = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+                            screen.blit(mid_font.render("Leaderboard", True, TEXT_COLOR), (430, 350))
+                            y = 390
+                            for i, (player, score) in enumerate(ranking, start=1):
+                                screen.blit(small_font.render(f"{i}. {player}: {score}", True, TEXT_COLOR), (390, y))
+                                y += 30
+
+                board_x = 760
+                board_y = 20
+                screen.blit(mid_font.render("Scores", True, TEXT_COLOR), (board_x, board_y))
+                for i, (player, score) in enumerate(sorted(scores.items(), key=lambda x: x[1], reverse=True)):
+                    screen.blit(small_font.render(f"{player}: {score}", True, TEXT_COLOR), (board_x, board_y + 35 + i * 25))
 
         pygame.display.flip()
         clock.tick(FPS)
