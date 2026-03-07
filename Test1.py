@@ -111,6 +111,102 @@ class InputBox:
                 self.text += event.unicode
         return None
 
+    def draw(self, screen, font):
+        border = ACCENT if self.active else pygame.Color("#334155")
+        pygame.draw.rect(screen, CARD_ALT, self.rect, border_radius=10)
+        pygame.draw.rect(screen, border, self.rect, 2, border_radius=10)
+        shown = self.text if self.text else self.placeholder
+        color = TEXT_PRIMARY if self.text else TEXT_MUTED
+        txt = font.render(shown, True, color)
+        screen.blit(txt, (self.rect.x + 12, self.rect.y + 10))
+
+    def clear(self):
+        self.text = ""
+
+
+def normalize_answer(text):
+    return " ".join((text or "").strip().lower().split())
+
+
+def normalize_category_from_filename(filename):
+    stem = Path(filename).stem
+    cleaned = stem.replace("_", " ").replace("-", " ").strip().lower()
+    aliases = {
+        "art": "Arts",
+        "arts": "Arts",
+        "sport": "Sports",
+        "sports": "Sports",
+        "science": "Science",
+        "history": "History",
+        "geography": "Geography",
+        "general knowledge": "General Knowledge",
+        "generalknowledge": "General Knowledge",
+        "gk": "General Knowledge",
+        "general": "General Knowledge",
+    }
+    if cleaned in aliases:
+        return aliases[cleaned]
+    title = " ".join([w.capitalize() for w in cleaned.split()])
+    return title if title in CATEGORIES else None
+
+
+def parse_question_bank_file(path):
+    raw = Path(path).read_text(encoding="utf-8", errors="ignore")
+    raw = raw.replace("\\n", "\n")
+    blocks = [b.strip() for b in re.split(r"(?=\#Q\s)", raw) if b.strip()]
+    parsed = []
+
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+
+        question = ""
+        answer = ""
+
+        for idx, line in enumerate(lines):
+            if line.startswith("#Q"):
+                question = line[2:].strip()
+                if not question and idx + 1 < len(lines):
+                    question = lines[idx + 1]
+            elif line.startswith("^"):
+                answer = line[1:].strip()
+
+        if not question:
+            continue
+
+        # If answer wasn't on ^ line, try to find prefixed option e.g. ^ OXO / C OXO
+        if not answer:
+            for line in lines:
+                if line.startswith("^"):
+                    answer = line[1:].strip()
+                    break
+
+        if question and answer:
+            parsed.append({"question": question, "answer": normalize_answer(answer)})
+
+    return parsed
+
+
+def load_question_bank(base_dir="."):
+    bank = {cat: [] for cat in CATEGORIES}
+    for txt_path in Path(base_dir).glob("*.txt"):
+        category = normalize_category_from_filename(txt_path.name)
+        if not category:
+            continue
+        try:
+            questions = parse_question_bank_file(txt_path)
+            bank[category].extend(questions)
+        except Exception:
+            continue
+
+    for category in CATEGORIES:
+        if not bank[category]:
+            bank[category] = FALLBACK_QUESTION_BANK.get(category, []).copy()
+    return bank
+
+
+QUESTION_BANK = load_question_bank(Path(__file__).parent)
     def clear(self):
         self.text = ""
 
@@ -151,6 +247,100 @@ def get_players(room):
 
 
 def get_scores(players):
+    scores = {}
+    for name, info in players.items():
+        if isinstance(info, dict):
+            scores[name] = int(info.get("score", 0))
+        else:
+            scores[name] = int(info or 0)
+    return scores
+
+
+def ensure_player(room_id, nickname):
+    room = db.child("rooms").child(room_id).get().val() or {}
+    players = get_players(room)
+    if nickname not in players:
+        db.child("rooms").child(room_id).child("players").child(nickname).set(
+            {"score": 0, "joined_at": time.time()}
+        )
+
+
+def create_wheel_surface(radius, small_font, icon_font):
+    surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+    slice_angle = 360 / len(CATEGORIES)
+    center = radius
+
+    for i, category in enumerate(CATEGORIES):
+        points = [(center, center)]
+        for ang in range(int(i * slice_angle), int((i + 1) * slice_angle) + 1):
+            rad = math.radians(ang)
+            points.append((center + radius * math.cos(rad), center + radius * math.sin(rad)))
+        pygame.draw.polygon(surf, WHEEL_COLORS[i], points)
+
+        label_angle = math.radians((i + 0.5) * slice_angle)
+        icon_r = radius * 0.58
+        text_r = radius * 0.75
+
+        icon_x = center + icon_r * math.cos(label_angle)
+        icon_y = center + icon_r * math.sin(label_angle)
+        text_x = center + text_r * math.cos(label_angle)
+        text_y = center + text_r * math.sin(label_angle)
+
+        icon = icon_font.render(CATEGORY_ICONS.get(category, "•"), True, TEXT_PRIMARY)
+        text = small_font.render(category, True, TEXT_PRIMARY)
+
+        surf.blit(icon, icon.get_rect(center=(icon_x, icon_y)))
+        surf.blit(text, text.get_rect(center=(text_x, text_y)))
+
+    return surf
+
+
+def phase_from_elapsed(round_data, elapsed):
+    durations = round_data.get("durations", {})
+    spin = float(durations.get("spin", 4))
+    reveal = float(durations.get("reveal", 1.2))
+    count = float(durations.get("countdown", 3))
+    answer = float(durations.get("answer", 30))
+    feedback = float(durations.get("feedback", 3))
+    leaderboard = float(durations.get("leaderboard", 4))
+
+    if elapsed < spin:
+        return "spinning", spin - elapsed
+    if elapsed < spin + reveal:
+        return "category_reveal", spin + reveal - elapsed
+    if elapsed < spin + reveal + count:
+        return "countdown", spin + reveal + count - elapsed
+    if elapsed < spin + reveal + count + answer:
+        return "answer", spin + reveal + count + answer - elapsed
+    if elapsed < spin + reveal + count + answer + feedback:
+        return "feedback", spin + reveal + count + answer + feedback - elapsed
+    if elapsed < spin + reveal + count + answer + feedback + leaderboard:
+        return "leaderboard", spin + reveal + count + answer + feedback + leaderboard - elapsed
+    return "round_done", 0
+
+
+def start_new_round(room_id, question_index):
+    category = random.choice(CATEGORIES)
+    options = QUESTION_BANK.get(category, FALLBACK_QUESTION_BANK[category])
+    question = random.choice(options)
+
+    payload = {
+        "question_index": int(question_index),
+        "category": category,
+        "question": question["question"],
+        "answer": normalize_answer(question["answer"]),
+        "phase_start": time.time(),
+        "wheel_start_angle": random.uniform(0, 360),
+        "wheel_rotation": random.uniform(1300, 1900),
+        "all_answered_at": 0,
+        "durations": {
+            "spin": 4.0,
+            "reveal": 1.2,
+            "countdown": 3.0,
+            "answer": 30.0,
+            "feedback": 3.0,
+            "leaderboard": 4.0,
+        },
     out = {}
     for name, info in players.items():
         if isinstance(info, dict):
@@ -189,6 +379,73 @@ def start_new_round(room_id, game, question_index):
     db.child("rooms").child(room_id).child("game").update(
         {
             "status": "running",
+            "round": payload,
+            "score_applied_round": -1,
+            "updated_at": time.time(),
+        }
+    )
+
+
+def host_start_game(room_id):
+    room = db.child("rooms").child(room_id).get().val() or {}
+    players = get_players(room)
+    for p in players:
+        db.child("rooms").child(room_id).child("players").child(p).child("score").set(0)
+
+    db.child("rooms").child(room_id).child("answers").set({})
+    db.child("rooms").child(room_id).child("game").set(
+        {
+            "host": room.get("game", {}).get("host", ""),
+            "status": "running",
+            "started_at": time.time(),
+            "finished_at": 0,
+            "score_applied_round": -1,
+        }
+    )
+    start_new_round(room_id, 0)
+
+
+def submit_answer(room_id, nickname, round_idx, answer_text):
+    db.child("rooms").child(room_id).child("answers").child(str(round_idx)).child(nickname).set(
+        {"answer": answer_text, "submitted_at": time.time()}
+    )
+
+
+def maybe_shorten_answer_phase(room_id, room):
+    game = room.get("game", {})
+    round_data = game.get("round", {})
+    if not round_data:
+        return
+
+    all_answered_at = float(round_data.get("all_answered_at", 0) or 0)
+    if all_answered_at > 0:
+        return
+
+    round_idx = int(round_data.get("question_index", -1))
+    answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
+    players = get_players(room)
+    if not players:
+        return
+
+    all_answered = all(p in answers and normalize_answer((answers[p] or {}).get("answer", "")) != "" for p in players)
+    if not all_answered:
+        return
+
+    phase_start = float(round_data.get("phase_start", time.time()))
+    durations = round_data.get("durations", {})
+    elapsed = time.time() - phase_start
+    pre_answer = float(durations.get("spin", 4)) + float(durations.get("reveal", 1.2)) + float(
+        durations.get("countdown", 3)
+    )
+    elapsed_answer = max(0.5, elapsed - pre_answer)
+    short_answer = min(float(durations.get("answer", 30)), elapsed_answer + 1.5)
+
+    db.child("rooms").child(room_id).child("game").child("round").update(
+        {"all_answered_at": time.time(), "durations": {**durations, "answer": short_answer}}
+    )
+
+
+def apply_round_scoring(room_id, room):
             "round": round_payload,
             "score_applied_round": -1,
             "updated_at": round_start,
@@ -215,6 +472,15 @@ def apply_round_scoring(room_id, room, nickname):
     if int(game.get("score_applied_round", -1)) == round_idx:
         return
 
+    correct = normalize_answer(round_data.get("answer", ""))
+    players = get_players(room)
+    answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
+
+    for player in players:
+        submitted = normalize_answer((answers.get(player) or {}).get("answer", ""))
+        if not submitted:
+            delta = -2
+        elif submitted == correct:
     correct_answer = round_data.get("answer", "")
     answers = db.child("rooms").child(room_id).child("answers").child(str(round_idx)).get().val() or {}
     players = get_players(room)
@@ -229,6 +495,9 @@ def apply_round_scoring(room_id, room, nickname):
         else:
             delta = -5
 
+        score_ref = db.child("rooms").child(room_id).child("players").child(player).child("score")
+        current = int(score_ref.get().val() or 0)
+        score_ref.set(current + delta)
         score_path = db.child("rooms").child(room_id).child("players").child(player).child("score")
         current_score = score_path.get().val() or 0
         score_path.set(int(current_score) + delta)
@@ -236,6 +505,36 @@ def apply_round_scoring(room_id, room, nickname):
     db.child("rooms").child(room_id).child("game").child("score_applied_round").set(round_idx)
 
 
+def draw_gradient_bg(screen):
+    for y in range(HEIGHT):
+        t = y / HEIGHT
+        color = (
+            int(BG_TOP.r + (BG_BOTTOM.r - BG_TOP.r) * t),
+            int(BG_TOP.g + (BG_BOTTOM.g - BG_TOP.g) * t),
+            int(BG_TOP.b + (BG_BOTTOM.b - BG_TOP.b) * t),
+        )
+        pygame.draw.line(screen, color, (0, y), (WIDTH, y))
+
+
+def render_wrapped_text(screen, font, text, color, rect, line_spacing=6):
+    words = text.split()
+    lines = []
+    line = ""
+    for word in words:
+        trial = f"{line} {word}".strip()
+        if font.size(trial)[0] <= rect.width:
+            line = trial
+        else:
+            lines.append(line)
+            line = word
+    if line:
+        lines.append(line)
+
+    y = rect.y
+    for ln in lines:
+        surf = font.render(ln, True, color)
+        screen.blit(surf, (rect.x, y))
+        y += surf.get_height() + line_spacing
 def submit_answer(room_id, nickname, round_idx, answer_text):
     db.child("rooms").child(room_id).child("answers").child(str(round_idx)).child(nickname).set(
         {
@@ -285,6 +584,21 @@ def main():
     pygame.display.set_caption("Multiplayer Trivia")
     clock = pygame.time.Clock()
 
+    title_font = pygame.font.SysFont("Segoe UI", 34, bold=True)
+    section_font = pygame.font.SysFont("Segoe UI", 24, bold=True)
+    body_font = pygame.font.SysFont("Segoe UI", 18)
+    small_font = pygame.font.SysFont("Segoe UI", 15)
+    icon_font = pygame.font.SysFont("Segoe UI Emoji", 18)
+
+    menu_nick = InputBox(340, 210, 320, 42, "Nickname")
+    menu_room = InputBox(340, 270, 320, 42, "Room ID (blank = create random)")
+    answer_box = InputBox(120, 532, 700, 42, "Type your answer and press Enter")
+
+    join_btn = Button(420, 340, 160, 46, "JOIN LOBBY")
+    start_btn = Button(405, 552, 190, 48, "START GAME")
+    submit_btn = Button(835, 532, 90, 42, "SEND")
+
+    wheel_surface = create_wheel_surface(185, small_font, icon_font)
     title_font = pygame.font.SysFont("Verdana", 40, bold=True)
     large_font = pygame.font.SysFont("Verdana", 30, bold=True)
     mid_font = pygame.font.SysFont("Verdana", 24)
@@ -316,6 +630,10 @@ def main():
         now = time.time()
         now_ms = pygame.time.get_ticks()
 
+        if state in {"LOBBY", "GAME"} and room_id and now_ms - last_poll >= POLL_INTERVAL_MS:
+            room_data = db.child("rooms").child(room_id).get().val() or {}
+            is_host = room_data.get("game", {}).get("host") == nickname
+            if state == "LOBBY" and room_data.get("game", {}).get("status") == "running":
         if state in {"LOBBY", "GAME"} and room_id and (now_ms - last_poll >= POLL_INTERVAL_MS):
             room_data = db.child("rooms").child(room_id).get().val() or {}
             game = room_data.get("game", {})
@@ -332,6 +650,7 @@ def main():
 
             if state == "MENU":
                 menu_nick.handle_event(event, max_len=16)
+                menu_room.handle_event(event, max_len=10)
                 menu_room.handle_event(event, max_len=8)
                 if event.type == pygame.MOUSEBUTTONDOWN and join_btn.is_clicked(event.pos):
                     nickname = menu_nick.text.strip()
